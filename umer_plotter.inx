@@ -22,7 +22,7 @@
 			<param name="output-info" type="description" appearance="header">Output</param>
 			<param name="directory" type="string" _gui-text="Output Directory:"></param>
 			<param name="filename" type="string" _gui-text="Output Filename:">output.gcode</param>
-			<param name="add-numeric-suffix-to-filename" type="boolean" _gui-text="Add numeric suffix to filename">true</param>	
+			<param name="add-numeric-suffix-to-filename" type="bool" _gui-text="Add numeric suffix to filename">true</param>	
 
 	<effect>
 		<effects-menu>

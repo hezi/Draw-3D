@@ -27,11 +27,14 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 """
 import inkex, simplestyle, simplepath
-import cubicsuperpath, simpletransform, bezmisc
+import simpletransform, bezmisc
 
+from inkex import paths
+from inkex.bezier import bezierlength, bezierparameterize, beziertatlength, tpoint
+from lxml import etree
 import os
 import math
-import bezmisc
+# import bezmisc
 import re
 import copy
 import sys
@@ -51,24 +54,26 @@ if "errormsg" not in dir(inkex):
     inkex.errormsg = lambda msg: sys.stderr.write((unicode(msg) + "\n").encode("UTF-8"))
 
 
-def bezierslopeatt(((bx0,by0),(bx1,by1),(bx2,by2),(bx3,by3)),t):
-    ax,ay,bx,by,cx,cy,x0,y0=bezmisc.bezierparameterize(((bx0,by0),(bx1,by1),(bx2,by2),(bx3,by3)))
-    dx=3*ax*(t**2)+2*bx*t+cx
-    dy=3*ay*(t**2)+2*by*t+cy
-    if dx==dy==0 :
-        dx = 6*ax*t+2*bx
-        dy = 6*ay*t+2*by
-        if dx==dy==0 :
-            dx = 6*ax
-            dy = 6*ay
-            if dx==dy==0 :
-                print_("Slope error x = %s*t^3+%s*t^2+%s*t+%s, y = %s*t^3+%s*t^2+%s*t+%s,  t = %s, dx==dy==0" % (ax,bx,cx,dx,ay,by,cy,dy,t))
-                print_(((bx0,by0),(bx1,by1),(bx2,by2),(bx3,by3)))
-                dx, dy = 1, 1
+# def bezierslopeatt(((bx0,by0),(bx1,by1),(bx2,by2),(bx3,by3)),t):
+#     ax,ay,bx,by,cx,cy,x0,y0=bezierparameterize(((bx0,by0),(bx1,by1),(bx2,by2),(bx3,by3)))
+#     dx=3*ax*(t**2)+2*bx*t+cx
+#     dy=3*ay*(t**2)+2*by*t+cy
+#     if dx==dy==0 :
+#         dx = 6*ax*t+2*bx
+#         dy = 6*ay*t+2*by
+#         if dx==dy==0 :
+#             dx = 6*ax
+#             dy = 6*ay
+#             if dx==dy==0 :
+#                 print_("Slope error x = %s*t^3+%s*t^2+%s*t+%s, y = %s*t^3+%s*t^2+%s*t+%s,  t = %s, dx==dy==0" % (ax,bx,cx,dx,ay,by,cy,dy,t))
+#                 print_(((bx0,by0),(bx1,by1),(bx2,by2),(bx3,by3)))
+#                 dx, dy = 1, 1
 
-    return dx,dy
-bezmisc.bezierslopeatt = bezierslopeatt
+#     return dx,dy
+# bezmisc.bezierslopeatt = bezierslopeatt
 
+def parsePath(d):
+    return paths.CubicSuperPath(paths.Path(d))
 
 def ireplace(self,old,new,count=0):
     pattern = re.compile(re.escape(old),re.I)
@@ -351,7 +356,7 @@ def csp_true_bounds(csp) :
     maxy = [float("-inf"), 0, 0, 0]
     for i in range(len(csp)):
         for j in range(1,len(csp[i])):
-            ax,ay,bx,by,cx,cy,x0,y0 = bezmisc.bezierparameterize((csp[i][j-1][1],csp[i][j-1][2],csp[i][j][0],csp[i][j][1]))
+            ax,ay,bx,by,cx,cy,x0,y0 = bezierparameterize((csp[i][j-1][1],csp[i][j-1][2],csp[i][j][0],csp[i][j][1]))
             roots = cubic_solver(0, 3*ax, 2*bx, cx)     + [0,1]
             for root in roots :
                 if type(root) is complex and abs(root.imag)<1e-10:
@@ -388,8 +393,8 @@ def csp_segments_intersection(sp1,sp2,sp3,sp4) :
     a, b = csp_segment_to_bez(sp1,sp2), csp_segment_to_bez(sp3,sp4)
 
     def polish_intersection(a,b,ta,tb, tolerance = intersection_tolerance) :
-        ax,ay,bx,by,cx,cy,dx,dy            = bezmisc.bezierparameterize(a)
-        ax1,ay1,bx1,by1,cx1,cy1,dx1,dy1    = bezmisc.bezierparameterize(b)
+        ax,ay,bx,by,cx,cy,dx,dy            = bezierparameterize(a)
+        ax1,ay1,bx1,by1,cx1,cy1,dx1,dy1    = bezierparameterize(b)
         i = 0
         F, F1 =  [.0,.0], [[.0,.0],[.0,.0]]
         while i==0 or (abs(F[0])**2+abs(F[1])**2 > tolerance and i<10):
@@ -533,7 +538,7 @@ def csp_max_curvature(sp1,sp2):
 
 
 def csp_curvature_at_t(sp1,sp2,t, depth = 3) :
-    ax,ay,bx,by,cx,cy,dx,dy = bezmisc.bezierparameterize(csp_segment_to_bez(sp1,sp2))
+    ax,ay,bx,by,cx,cy,dx,dy = bezierparameterize(csp_segment_to_bez(sp1,sp2))
 
     #curvature = (x'y''-y'x'') / (x'^2+y'^2)^1.5
 
@@ -569,7 +574,7 @@ def csp_curvature_radius_at_t(sp1,sp2,t) :
 
 def csp_special_points(sp1,sp2) :
     # special points = curvature == 0
-    ax,ay,bx,by,cx,cy,dx,dy = bezmisc.bezierparameterize((sp1[1],sp1[2],sp2[0],sp2[1]))
+    ax,ay,bx,by,cx,cy,dx,dy = bezierparameterize((sp1[1],sp1[2],sp2[0],sp2[1]))
     a = 3*ax*by-3*ay*bx
     b = 3*ax*cy-3*cx*ay
     c = bx*cy-cx*by
@@ -616,20 +621,20 @@ def csp_at_t(sp1,sp2,t):
 
 def csp_splitatlength(sp1, sp2, l = 0.5, tolerance = 0.01):
     bez = (sp1[1][:],sp1[2][:],sp2[0][:],sp2[1][:])
-    t = bezmisc.beziertatlength(bez, l, tolerance)
+    t = beziertatlength(bez, l, tolerance)
     return csp_split(sp1, sp2, t)
 
 
 def cspseglength(sp1,sp2, tolerance = 0.001):
     bez = (sp1[1][:],sp1[2][:],sp2[0][:],sp2[1][:])
-    return bezmisc.bezierlength(bez, tolerance)
+    return bezierlength(bez, tolerance)
 
 
 def csplength(csp):
     total = 0
     lengths = []
     for sp in csp:
-        for i in xrange(1,len(sp)):
+        for i in range(1,len(sp)):
             l = cspseglength(sp[i-1],sp[i])
             lengths.append(l)
             total += l
@@ -639,12 +644,12 @@ def csplength(csp):
 def csp_segments(csp):
     l, seg = 0, [0]
     for sp in csp:
-        for i in xrange(1,len(sp)):
+        for i in range(1,len(sp)):
             l += cspseglength(sp[i-1],sp[i])
             seg += [ l ]
 
     if l>0 :
-        seg = [seg[i]/l for i in xrange(len(seg))]
+        seg = [seg[i]/l for i in range(len(seg))]
     return seg,l
 
 
@@ -655,13 +660,13 @@ def rebuild_csp (csp, segs, s=None):
     if len(s)>len(segs) : return None
     segs = segs[:]
     segs.sort()
-    for i in xrange(len(s)):
+    for i in range(len(s)):
         d = None
-        for j in xrange(len(segs)):
+        for j in range(len(segs)):
             d = min( [abs(s[i]-segs[j]),j], d) if d!=None else [abs(s[i]-segs[j]),j]
         del segs[d[1]]
-    for i in xrange(len(segs)):
-        for j in xrange(0,len(s)):
+    for i in range(len(segs)):
+        for j in range(0,len(s)):
             if segs[i]<s[j] : break
         if s[j]-s[j-1] != 0 :
             t = (segs[i] - s[j-1])/(s[j]-s[j-1])
@@ -673,7 +678,7 @@ def rebuild_csp (csp, segs, s=None):
 
 def csp_slope(sp1,sp2,t):
     bez = (sp1[1][:],sp1[2][:],sp2[0][:],sp2[1][:])
-    return bezmisc.bezierslopeatt(bez,t)
+    return bezierslopeatt(bez,t)
 
 
 def csp_line_intersection(l1,l2,sp1,sp2):
@@ -689,7 +694,7 @@ def csp_line_intersection(l1,l2,sp1,sp2):
         coef1=1
         coef2=aa/cc
     bez = (sp1[1][:],sp1[2][:],sp2[0][:],sp2[1][:])
-    ax,ay,bx,by,cx,cy,x0,y0=bezmisc.bezierparameterize(bez)
+    ax,ay,bx,by,cx,cy,x0,y0=bezierparameterize(bez)
     a=coef1*ay-coef2*ax
     b=coef1*by-coef2*bx
     c=coef1*cy-coef2*cx
@@ -807,18 +812,21 @@ def point_to_arc_distance(p, arc):
                 return (d2, [P2.x,P2.y])
 
 
-def csp_to_arc_distance(sp1,sp2, arc1, arc2, tolerance = 0.01 ): # arc = [start,end,center,alpha]
-    n, i = 10, 0
-    d, d1, dl = (0,(0,0)), (0,(0,0)), 0
-    while i<1 or (abs(d1[0]-dl[0])>tolerance and i<4):
+def csp_to_arc_distance(sp1, sp2, arc1, arc2, tolerance=0.01):  # arc = [start,end,center,alpha]
+    n = 10
+    i = 0
+    d = (0, [0, 0])
+    d1 = (0, [0, 0])
+    dl = 0
+    while i < 1 or (abs(d1[0] - dl[0]) > tolerance and i < 4):
         i += 1
-        dl = d1*1
-        for j in range(n+1):
-            t = float(j)/n
-            p = csp_at_t(sp1,sp2,t)
-            d = min(point_to_arc_distance(p,arc1), point_to_arc_distance(p,arc2))
-            d1 = max(d1,d)
-        n=n*2
+        dl = d1 * 1
+        for j in range(n + 1):
+            t = float(j) / n
+            p = csp_at_t(sp1, sp2, t)
+            d = min(point_to_arc_distance(p, arc1), point_to_arc_distance(p, arc2))
+            d1 = max(d1, d)
+        n = n * 2
     return d1[0]
 
 
@@ -968,7 +976,7 @@ def csp_reverse(csp) :
 
 
 def csp_normalized_slope(sp1,sp2,t) :
-    ax,ay,bx,by,cx,cy,dx,dy=bezmisc.bezierparameterize((sp1[1][:],sp1[2][:],sp2[0][:],sp2[1][:]))
+    ax,ay,bx,by,cx,cy,dx,dy=bezierparameterize((sp1[1][:],sp1[2][:],sp2[0][:],sp2[1][:]))
     if sp1[1]==sp2[1]==sp1[2]==sp2[0] : return [1.,0.]
     f1x = 3*ax*t*t+2*bx*t+cx
     f1y = 3*ay*t*t+2*by*t+cy
@@ -1010,7 +1018,7 @@ def csp_normalized_normal(sp1,sp2,t) :
 
 
 def csp_parameterize(sp1,sp2):
-    return bezmisc.bezierparameterize(csp_segment_to_bez(sp1,sp2))
+    return bezierparameterize(csp_segment_to_bez(sp1,sp2))
 
 
 def csp_concat_subpaths(*s):
@@ -1037,7 +1045,7 @@ def csp_draw(csp, color="#05f", group = None, style="fill:none;", width = .1, co
         style += "stroke:"+color+";"+ "stroke-width:%0.4fpx;"%width
         args = {"d": cubicsuperpath.formatPath(csp), "style":style}
         if comment!="" : args["comment"] = str(comment)
-        inkex.etree.SubElement( group, inkex.addNS('path','svg'), args )
+        etree.SubElement( group, inkex.addNS('path','svg'), args )
 
 
 def csp_subpaths_end_to_start_distance2(s1,s2):
@@ -1133,7 +1141,7 @@ def csp_segment_convex_hull(sp1,sp2):
     if not (m1 and m2) and m3 : return [c,a,d]
     if not (m1 and m3) and m2 : return [b,c,d]
 
-    raise ValueError, "csp_segment_convex_hull happend something that shouldnot happen!"
+    raise ValueError("csp_segment_convex_hull happend something that shouldnot happen!")
 
 
 ################################################################################
@@ -1157,9 +1165,8 @@ def bounds_intersect(a, b) :
     return not ( (a[0]>b[2]) or (b[0]>a[2]) or (a[1]>b[3]) or (b[1]>a[3]) )
 
 
-def tpoint((x1,y1),(x2,y2),t):
-    return [x1+t*(x2-x1),y1+t*(y2-y1)]
-
+# def tpoint((x1,y1),(x2,y2),t):
+#     return [x1+t*(x2-x1),y1+t*(y2-y1)]
 
 def bez_to_csp_segment(bez) :
     return [bez[0],bez[0],bez[1]], [bez[2],bez[3],bez[3]]
@@ -1191,7 +1198,8 @@ def bez_normalized_slope(bez,t):
 ###    Some vector functions
 ################################################################################
 
-def normalize((x,y)) :
+def normalize(t) :
+    x, y = t
     l = math.sqrt(x**2+y**2)
     if l == 0 : return [0.,0.]
     else :         return [x/l, y/l]
@@ -1273,21 +1281,21 @@ def atan2(*arg):
 
         return (math.pi/2 - math.atan2(arg[0],arg[1]) ) % math.pi2
     else :
-        raise ValueError, "Bad argumets for atan! (%s)" % arg
+        raise ValueError("Bad argumets for atan! (%s)" % arg)
 
 
 def draw_text(text,x,y,style = None, font_size = 20) :
     if style == None :
         style = "font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;fill:#000000;fill-opacity:1;stroke:none;"
     style += "font-size:%fpx;"%font_size
-    t = inkex.etree.SubElement(    options.doc_root, inkex.addNS('text','svg'), {
+    t = etree.SubElement(    options.doc_root, inkex.addNS('text','svg'), {
                             'x':    str(x),
                             inkex.addNS("space","xml"):"preserve",
                             'y':    str(y)
                         })
     text = str(text).split("\n")
     for s in text :
-        span = inkex.etree.SubElement( t, inkex.addNS('tspan','svg'),
+        span = etree.SubElement( t, inkex.addNS('tspan','svg'),
                         {
                             'x':    str(x),
                             'y':    str(+y),
@@ -1302,9 +1310,9 @@ def draw_pointer(x,color = "#f00", figure = "cross", comment = "", width = .1) :
         s = ""
         for i in range(1,len(x)/2) :
             s+= " %s, %s " %(x[i*2],x[i*2+1])
-        inkex.etree.SubElement( options.doc_root, inkex.addNS('path','svg'), {"d": "M %s,%s L %s"%(x[0],x[1],s), "style":"fill:none;stroke:%s;stroke-width:%f;"%(color,width),"comment":str(comment)} )
+        etree.SubElement( options.doc_root, inkex.addNS('path','svg'), {"d": "M %s,%s L %s"%(x[0],x[1],s), "style":"fill:none;stroke:%s;stroke-width:%f;"%(color,width),"comment":str(comment)} )
     else :
-        inkex.etree.SubElement( options.doc_root, inkex.addNS('path','svg'), {"d": "m %s,%s l 10,10 -20,-20 10,10 -10,10, 20,-20"%(x[0],x[1]), "style":"fill:none;stroke:%s;stroke-width:%f;"%(color,width),"comment":str(comment)} )
+        etree.SubElement( options.doc_root, inkex.addNS('path','svg'), {"d": "m %s,%s l 10,10 -20,-20 10,10 -10,10, 20,-20"%(x[0],x[1]), "style":"fill:none;stroke:%s;stroke-width:%f;"%(color,width),"comment":str(comment)} )
 
 
 def straight_segments_intersection(a,b, true_intersection = True) : # (True intersection means check ta and tb are in [0,1])
@@ -1381,37 +1389,71 @@ def print_(*arg):
 ################################################################################
 ###        Point (x,y) operations
 ################################################################################
-class P:
+class P(object):
     def __init__(self, x, y=None):
-        if not y==None:
-            self.x, self.y = float(x), float(y)
+        if not y is None:
+            self.x = float(x)
+            self.y = float(y)
         else:
-            self.x, self.y = float(x[0]), float(x[1])
-    def __add__(self, other): return P(self.x + other.x, self.y + other.y)
-    def __sub__(self, other): return P(self.x - other.x, self.y - other.y)
-    def __neg__(self): return P(-self.x, -self.y)
+            self.x = float(x[0])
+            self.y = float(x[1])
+
+    def __add__(self, other):
+        return P(self.x + other.x, self.y + other.y)
+
+    def __sub__(self, other):
+        return P(self.x - other.x, self.y - other.y)
+
+    def __neg__(self):
+        return P(-self.x, -self.y)
+
     def __mul__(self, other):
         if isinstance(other, P):
             return self.x * other.x + self.y * other.y
         return P(self.x * other, self.y * other)
+
     __rmul__ = __mul__
-    def __div__(self, other): return P(self.x / other, self.y / other)
-    def mag(self): return math.hypot(self.x, self.y)
+
+    def __div__(self, other):
+        return P(self.x / other, self.y / other)
+
+    def __truediv__(self, other):
+        return self.__div__(other)
+
+    def mag(self):
+        return math.hypot(self.x, self.y)
+
     def unit(self):
-        h = self.mag()
-        if h: return self / h
-        else: return P(0,0)
-    def dot(self, other): return self.x * other.x + self.y * other.y
+        h_mag = self.mag()
+        if h_mag:
+            return self / h_mag
+        return P(0, 0)
+
+    def dot(self, other):
+        return self.x * other.x + self.y * other.y
+
     def rot(self, theta):
         c = math.cos(theta)
         s = math.sin(theta)
-        return P(self.x * c - self.y * s,  self.x * s + self.y * c)
-    def angle(self): return math.atan2(self.y, self.x)
-    def __repr__(self): return '%f,%f' % (self.x, self.y)
-    def pr(self): return "%.2f,%.2f" % (self.x, self.y)
-    def to_list(self): return [self.x, self.y]
-    def ccw(self): return P(-self.y,self.x)
-    def l2(self): return self.x*self.x + self.y*self.y
+        return P(self.x * c - self.y * s, self.x * s + self.y * c)
+
+    def angle(self):
+        return math.atan2(self.y, self.x)
+
+    def __repr__(self):
+        return '{:f},{:f}'.format(self.x, self.y)
+
+    def pr(self):
+        return "{:.2f},{:.2f}".format(self.x, self.y)
+
+    def to_list(self):
+        return [self.x, self.y]
+
+    def ccw(self):
+        return P(-self.y, self.x)
+
+    def l2(self):
+        return self.x * self.x + self.y * self.y
 
 ################################################################################
 ###
@@ -1584,15 +1626,15 @@ def csp_offset(csp, r) :
     ############################################################################
     # Remove all small segments (segment length < 0.001)
 
-    for i in xrange(len(csp)) :
-        for j in xrange(len(csp[i])) :
+    for i in range(len(csp)) :
+        for j in range(len(csp[i])) :
             sp = csp[i][j]
             if (P(sp[1])-P(sp[0])).mag() < 0.001 :
                 csp[i][j][0] = sp[1]
             if (P(sp[2])-P(sp[0])).mag() < 0.001 :
                 csp[i][j][2] = sp[1]
-    for i in xrange(len(csp)) :
-        for j in xrange(1,len(csp[i])) :
+    for i in range(len(csp)) :
+        for j in range(1,len(csp[i])) :
             if cspseglength(csp[i][j-1], csp[i][j])<0.001 :
                 csp[i] = csp[i][:j] + csp[i][j+1:]
         if cspseglength(csp[i][-1],csp[i][0])>0.001 :
@@ -1612,11 +1654,11 @@ def csp_offset(csp, r) :
     # Offset
     ############################################################################
     # Create offsets for all segments in the path. And join them together inside each subpath.
-    unclipped_offset = [[] for i in xrange(csp_len)]
-    offsets_original = [[] for i in xrange(csp_len)]
-    join_points = [[] for i in xrange(csp_len)]
-    intersection = [[] for i in xrange(csp_len)]
-    for i in xrange(csp_len) :
+    unclipped_offset = [[] for i in range(csp_len)]
+    offsets_original = [[] for i in range(csp_len)]
+    join_points = [[] for i in range(csp_len)]
+    intersection = [[] for i in range(csp_len)]
+    for i in range(csp_len) :
         subpath = csp[i]
         subpath_offset = []
         last_offset_len = 0
@@ -1649,7 +1691,7 @@ def csp_offset(csp, r) :
         #for k,t in intersection[i]:
         #    draw_pointer(csp_at_t(subpath_offset[k-1], subpath_offset[k], t))
 
-    #inkex.etree.SubElement( options.doc_root, inkex.addNS('path','svg'), {"d": cubicsuperpath.formatPath(unclipped_offset), "style":"fill:none;stroke:#0f0;"} )
+    #etree.SubElement( options.doc_root, inkex.addNS('path','svg'), {"d": cubicsuperpath.formatPath(unclipped_offset), "style":"fill:none;stroke:#0f0;"} )
     print_("Offsetted path in %s"%(time.time()-time_))
     time_ = time.time()
 
@@ -1666,14 +1708,14 @@ def csp_offset(csp, r) :
     small_tolerance = 0.01
     summ = 0
     summ1 = 0
-    for subpath_i in xrange(csp_len) :
-        for subpath_j in xrange(subpath_i,csp_len) :
+    for subpath_i in range(csp_len) :
+        for subpath_j in range(subpath_i,csp_len) :
             subpath = unclipped_offset[subpath_i]
             subpath1 = unclipped_offset[subpath_j]
-            for i in xrange(1,len(subpath)) :
+            for i in range(1,len(subpath)) :
                 # If subpath_i==subpath_j we are looking for self intersections, so
-                # we'll need search intersections only for xrange(i,len(subpath1))
-                for j in ( xrange(i,len(subpath1)) if subpath_i==subpath_j else xrange(len(subpath1))) :
+                # we'll need search intersections only for range(i,len(subpath1))
+                for j in ( range(i,len(subpath1)) if subpath_i==subpath_j else range(len(subpath1))) :
                     if subpath_i==subpath_j and j==i :
                         # Find self intersections of a segment
                         sp1,sp2,sp3 = csp_split(subpath[i-1],subpath[i],.5)
@@ -1711,7 +1753,7 @@ def csp_offset(csp, r) :
     # Split unclipped offset by intersection points into splitted_offset
     ########################################################################
     splitted_offset = []
-    for i in xrange(csp_len) :
+    for i in range(csp_len) :
         subpath = unclipped_offset[i]
         if len(intersection[i]) > 0 :
             parts = csp_subpath_split_by_points(subpath, intersection[i])
@@ -1854,11 +1896,11 @@ def biarc(sp1, sp2, z1, z2, depth=0):
     elif     csmall and a!=0:    beta = -b/a
     elif not asmall:
         discr = b*b-4*a*c
-        if discr < 0:    raise ValueError, (a,b,c,discr)
+        if discr < 0:    raise ValueError(a,b,c,discr)
         disq = discr**.5
         beta1 = (-b - disq) / 2 / a
         beta2 = (-b + disq) / 2 / a
-        if beta1*beta2 > 0 :    raise ValueError, (a,b,c,disq,beta1,beta2)
+        if beta1*beta2 > 0 :    raise ValueError(a,b,c,disq,beta1,beta2)
         beta = max(beta1, beta2)
     elif    asmall and bsmall:
         return biarc_split(sp1, sp2, z1, z2, depth)
@@ -1877,7 +1919,7 @@ def biarc(sp1, sp2, z1, z2, depth=0):
         alpha =  (p2a - p0a) % (2*math.pi)
         if (p0a<p2a and  (p1a<p0a or p2a<p1a))    or    (p2a<p1a<p0a) :
             alpha = -2*math.pi+alpha
-        if abs(R.x)>1000000 or abs(R.y)>1000000  or (R-P0).mag<.1 :
+        if abs(R.x)>1000000 or abs(R.y)>1000000  or (R-P0).mag()<.1 :
             return None, None
         else :
             return  R, alpha
@@ -2222,7 +2264,7 @@ class Polygon:
 
         while len(edges)>0 :
             poly = []
-            if loops > len_edges  : raise ValueError, "Hull error"
+            if loops > len_edges  : raise ValueError("Hull error")
             loops+=1
             # Find left most vertex.
             start = (1e100,1)
@@ -2233,7 +2275,7 @@ class Polygon:
             loops1 = 0
             while (last[1]!=start[0] or first_run) :
                 first_run = False
-                if loops1 > len_edges  : raise ValueError, "Hull error"
+                if loops1 > len_edges  : raise ValueError("Hull error")
                 loops1 += 1
                 next = get_closes_edge_by_angle(edges[last[1]],last)
                 #draw_pointer(next[0]+next[1],"Green","line", comment=i, width= 1)
@@ -2466,26 +2508,26 @@ class plotter_gcode(inkex.Effect):
 
     def __init__(self):
         inkex.Effect.__init__(self)
-        self.OptionParser.add_option("",   "--x-offset",                        action="store", type="int",             dest="x_offset",                            default="40",                         help="x offset")
-        self.OptionParser.add_option("",   "--y-offset",                        action="store", type="int",             dest="y_offset",                            default="35",                         help="y offset")
-        self.OptionParser.add_option("",   "--z-offset",                        action="store", type="int",             dest="z_offset",                            default="40",                         help="z offset")
+        self.arg_parser.add_argument( "--x-offset",                         type=int,             dest="x_offset",                            default="40",                         help="x offset")
+        self.arg_parser.add_argument( "--y-offset",                         type=int,             dest="y_offset",                            default="35",                         help="y offset")
+        self.arg_parser.add_argument( "--z-offset",                         type=int,             dest="z_offset",                            default="40",                         help="z offset")
         
-        self.OptionParser.add_option("",   "--x-bed",                        action="store", type="int",             dest="x_bed",                            default="235",                         help="Size of the build plate in x axis")
-        self.OptionParser.add_option("",   "--y-bed",                        action="store", type="int",             dest="y_bed",                            default="235",                         help="Size of the build plate in y axis")
+        self.arg_parser.add_argument( "--x-bed",                         type=int,             dest="x_bed",                            default="235",                         help="Size of the build plate in x axis")
+        self.arg_parser.add_argument( "--y-bed",                         type=int,             dest="y_bed",                            default="235",                         help="Size of the build plate in y axis")
         
-        self.OptionParser.add_option("",   "--pen-lift",                        action="store", type="int",             dest="pen_lift",                            default="5",                         help="Z distance in mm to lift the pen when not drawing")
-        self.OptionParser.add_option("-d", "--directory",                       action="store", type="string",          dest="directory",                           default="",                             help="Output directory")
-        self.OptionParser.add_option("-f", "--filename",                        action="store", type="string",          dest="file",                                default="output.gcode",                 help="File name")
-        self.OptionParser.add_option("",   "--add-numeric-suffix-to-filename",  action="store", type="inkbool",         dest="add_numeric_suffix_to_filename",      default=False,                          help="Add numeric suffix to file name")
-        self.OptionParser.add_option("",   "--drawing-speed",                     action="store", type="int",           dest="drawing_speed",                       default="50",                          help="Laser speed (mm/min)")
-        self.OptionParser.add_option("",   "--travel-speed",                    action="store", type="int",             dest="travel_speed",                        default="120",                         help="Travel speed (mm/min)")
-        self.OptionParser.add_option("",   "--passes",                          action="store", type="int",             dest="passes",                              default="1",                            help="Quantity of passes")
-        self.OptionParser.add_option("",   "--suppress-all-messages",           action="store", type="inkbool",         dest="suppress_all_messages",               default=True,                           help="Hide messages during g-code generation")
-        self.OptionParser.add_option("",   "--create-log",                      action="store", type="inkbool",         dest="log_create_log",                      default=False,                          help="Create log files")
-        self.OptionParser.add_option("",   "--log-filename",                    action="store", type="string",          dest="log_filename",                        default='',                             help="Create log files")
-        self.OptionParser.add_option("",   "--engraving-draw-calculation-paths",action="store", type="inkbool",         dest="engraving_draw_calculation_paths",    default=False,                          help="Draw additional graphics to debug engraving path")
-        self.OptionParser.add_option("",   "--active-tab",                      action="store", type="string",          dest="active_tab",                          default="",                             help="Defines which tab is active")
-        self.OptionParser.add_option("",   "--biarc-max-split-depth",           action="store", type="int",             dest="biarc_max_split_depth",               default="4",                            help="Defines maximum depth of splitting while approximating using biarcs.")
+        self.arg_parser.add_argument( "--pen-lift",                         type=int,             dest="pen_lift",                            default="5",                         help="Z distance in mm to lift the pen when not drawing")
+        self.arg_parser.add_argument("-d", "--directory",                        type=str,          dest="directory",                           default="",                             help="Output directory")
+        self.arg_parser.add_argument("-f", "--filename",                         type=str,          dest="file",                                default="output.gcode",                 help="File name")
+        self.arg_parser.add_argument( "--add-numeric-suffix-to-filename",   type=inkex.Boolean,         dest="add_numeric_suffix_to_filename",      default=False,                          help="Add numeric suffix to file name")
+        self.arg_parser.add_argument( "--drawing-speed",                      type=int,           dest="drawing_speed",                       default="50",                          help="Laser speed (mm/min)")
+        self.arg_parser.add_argument( "--travel-speed",                     type=int,             dest="travel_speed",                        default="120",                         help="Travel speed (mm/min)")
+        self.arg_parser.add_argument( "--passes",                           type=int,             dest="passes",                              default="1",                            help="Quantity of passes")
+        self.arg_parser.add_argument( "--suppress-all-messages",            type=inkex.Boolean,         dest="suppress_all_messages",               default=True,                           help="Hide messages during g-code generation")
+        self.arg_parser.add_argument( "--create-log",                       type=inkex.Boolean,         dest="log_create_log",                      default=False,                          help="Create log files")
+        self.arg_parser.add_argument( "--log-filename",                     type=str,          dest="log_filename",                        default='',                             help="Create log files")
+        self.arg_parser.add_argument( "--engraving-draw-calculation-paths", type=inkex.Boolean,         dest="engraving_draw_calculation_paths",    default=False,                          help="Draw additional graphics to debug engraving path")
+        self.arg_parser.add_argument( "--active-tab",                       type=str,          dest="active_tab",                          default="",                             help="Defines which tab is active")
+        self.arg_parser.add_argument( "--biarc-max-split-depth",            type=int,             dest="biarc_max_split_depth",               default="4",                            help="Defines maximum depth of splitting while approximating using biarcs.")
 
     def parse_curve(self, p, layer, w = None, f = None):
             c = []
@@ -2493,16 +2535,15 @@ class plotter_gcode(inkex.Effect):
                 return []
             p = self.transform_csp(p, layer)
 
-
             ### Sort to reduce Rapid distance
-            k = range(1,len(p))
+            k = list(range(1,len(p)))
             keys = [0]
             while len(k)>0:
                 end = p[keys[-1]][-1][1]
-                dist = None
+                dist = tuple()
                 for i in range(len(k)):
                     start = p[k[i]][0][1]
-                    dist = max(   ( -( ( end[0]-start[0])**2+(end[1]-start[1])**2 ) ,i)    ,   dist )
+                    dist = max((-((end[0] - start[0]) ** 2 + (end[1] - start[1]) ** 2), i), dist)
                 keys += [k[dist[1]]]
                 del k[dist[1]]
             for k in keys:
@@ -2524,16 +2565,16 @@ class plotter_gcode(inkex.Effect):
         self.get_defs()
         # Add marker to defs if it doesnot exists
         if "DrawCurveMarker" not in self.defs :
-            defs = inkex.etree.SubElement( self.document.getroot(), inkex.addNS("defs","svg"))
-            marker = inkex.etree.SubElement( defs, inkex.addNS("marker","svg"), {"id":"DrawCurveMarker","orient":"auto","refX":"-8","refY":"-2.41063","style":"overflow:visible"})
-            inkex.etree.SubElement( marker, inkex.addNS("path","svg"),
+            defs = etree.SubElement( self.document.getroot(), inkex.addNS("defs","svg"))
+            marker = etree.SubElement( defs, inkex.addNS("marker","svg"), {"id":"DrawCurveMarker","orient":"auto","refX":"-8","refY":"-2.41063","style":"overflow:visible"})
+            etree.SubElement( marker, inkex.addNS("path","svg"),
                     {    "d":"m -6.55552,-2.41063 0,0 L -13.11104,0 c 1.0473,-1.42323 1.04126,-3.37047 0,-4.82126",
                         "style": "fill:#000044; fill-rule:evenodd;stroke-width:0.62500000;stroke-linejoin:round;"    }
                 )
         if "DrawCurveMarker_r" not in self.defs :
-            defs = inkex.etree.SubElement( self.document.getroot(), inkex.addNS("defs","svg"))
-            marker = inkex.etree.SubElement( defs, inkex.addNS("marker","svg"), {"id":"DrawCurveMarker_r","orient":"auto","refX":"8","refY":"-2.41063","style":"overflow:visible"})
-            inkex.etree.SubElement( marker, inkex.addNS("path","svg"),
+            defs = etree.SubElement( self.document.getroot(), inkex.addNS("defs","svg"))
+            marker = etree.SubElement( defs, inkex.addNS("marker","svg"), {"id":"DrawCurveMarker_r","orient":"auto","refX":"8","refY":"-2.41063","style":"overflow:visible"})
+            etree.SubElement( marker, inkex.addNS("path","svg"),
                     {    "d":"m 6.55552,-2.41063 0,0 L 13.11104,0 c -1.0473,-1.42323 -1.04126,-3.37047 0,-4.82126",
                         "style": "fill:#000044; fill-rule:evenodd;stroke-width:0.62500000;stroke-linejoin:round;"    }
                 )
@@ -2544,7 +2585,7 @@ class plotter_gcode(inkex.Effect):
             style['biarc%s_r'%i] = simplestyle.formatStyle(style['biarc%s_r'%i])
 
         if group==None:
-            group = inkex.etree.SubElement( self.layers[min(1,len(self.layers)-1)], inkex.addNS('g','svg'), {"gcodetools": "Preview group"} )
+            group = etree.SubElement( self.layers[min(1,len(self.layers)-1)], inkex.addNS('g','svg'), {"gcodetools": "Preview group"} )
         s, arcn = '', 0
 
 
@@ -2559,7 +2600,7 @@ class plotter_gcode(inkex.Effect):
 
             if s!='':
                 if s[1] == 'line':
-                    inkex.etree.SubElement(    group, inkex.addNS('path','svg'),
+                    etree.SubElement(    group, inkex.addNS('path','svg'),
                             {
                                 'style': style['line'],
                                 'd':'M %s,%s L %s,%s' % (s[0][0], s[0][1], si[0][0], si[0][1]),
@@ -2586,7 +2627,7 @@ class plotter_gcode(inkex.Effect):
                         a_end = a_st*1
                         a_st = a_st+a
                         st = style['biarc%s_r'%(arcn%2)]
-                    inkex.etree.SubElement(    group, inkex.addNS('path','svg'),
+                    etree.SubElement(    group, inkex.addNS('path','svg'),
                          {
                             'style': st,
                              inkex.addNS('cx','sodipodi'):        str(c[0]),
@@ -2822,9 +2863,9 @@ class plotter_gcode(inkex.Effect):
 
     def transform_csp(self, csp_, layer, reverse = False):
         csp = [  [ [csp_[i][j][0][:],csp_[i][j][1][:],csp_[i][j][2][:]]  for j in range(len(csp_[i])) ]   for i in range(len(csp_)) ]
-        for i in xrange(len(csp)):
-            for j in xrange(len(csp[i])):
-                for k in xrange(len(csp[i][j])):
+        for i in range(len(csp)):
+            for j in range(len(csp[i])):
+                for k in range(len(csp[i][j])):
                     csp[i][j][k] = self.transform(csp[i][j][k],layer, reverse)
         return csp
 
@@ -2952,7 +2993,7 @@ class plotter_gcode(inkex.Effect):
             point = [[],[]]
             for  node in i :
                 if node.get('gcodetools') == "Gcodetools orientation point arrow":
-                    point[0] = self.apply_transforms(node,cubicsuperpath.parsePath(node.get("d")))[0][0][1]
+                    point[0] = self.apply_transforms(node,parsePath(node.get("d")))[0][0][1]
                 if node.get('gcodetools') == "Gcodetools orientation point text":
                     r = re.match(r'(?i)\s*\(\s*(-?\s*\d*(?:,|\.)*\d*)\s*;\s*(-?\s*\d*(?:,|\.)*\d*)\s*;\s*(-?\s*\d*(?:,|\.)*\d*)\s*\)\s*',node.text)
                     point[1] = [float(r.group(1)),float(r.group(2)),float(r.group(3))]
@@ -3026,7 +3067,7 @@ class plotter_gcode(inkex.Effect):
             i=0
             out=[]
             for p in points:
-                for j in xrange(i,len(points)):
+                for j in range(i,len(points)):
                     if p==points[j]: points[j]=[None,None]
                 if p!=[None,None]: out+=[p]
             i+=1
@@ -3035,7 +3076,7 @@ class plotter_gcode(inkex.Effect):
 
         def get_way_len(points):
             l=0
-            for i in xrange(1,len(points)):
+            for i in range(1,len(points)):
                 l+=math.sqrt((points[i][0]-points[i-1][0])**2 + (points[i][1]-points[i-1][1])**2)
             return l
 
@@ -3061,7 +3102,7 @@ class plotter_gcode(inkex.Effect):
             for w in ways:
                 tpoints=points[:]
                 cw=[]
-                for j in xrange(0,len(points)):
+                for j in range(0,len(points)):
                     p=get_boundaries(get_boundaries(tpoints)[w[0]])[w[1]]
                     tpoints.remove(p[0])
                     cw+=p
@@ -3082,7 +3123,7 @@ class plotter_gcode(inkex.Effect):
         self.check_dir()
         gcode = ""
 
-        biarc_group = inkex.etree.SubElement( self.selected_paths.keys()[0] if len(self.selected_paths.keys())>0 else self.layers[0], inkex.addNS('g','svg') )
+        biarc_group = etree.SubElement( self.selected_paths.keys()[0] if len(self.selected_paths.keys())>0 else self.layers[0], inkex.addNS('g','svg') )
         print_(("self.layers=",self.layers))
         print_(("paths=",paths))
         for layer in self.layers :
@@ -3095,7 +3136,7 @@ class plotter_gcode(inkex.Effect):
                     if "d" not in path.keys() :
                         self.error(_("Warning: One or more paths dont have 'd' parameter, try to Ungroup (Ctrl+Shift+G) and Object to Path (Ctrl+Shift+C)!"),"selection_contains_objects_that_are_not_paths")
                         continue
-                    csp = cubicsuperpath.parsePath(path.get("d"))
+                    csp = parsePath(path.get("d"))
                     csp = self.apply_transforms(path, csp)
                     if path.get("dxfpoint") == "1":
                         tmp_curve=self.transform_csp(csp, layer)
@@ -3124,7 +3165,7 @@ class plotter_gcode(inkex.Effect):
         if layer in self.orientation_points:
             self.error(_("Active layer already has orientation points! Remove them or select another layer!"),"active_layer_already_has_orientation_points")
 
-        orientation_group = inkex.etree.SubElement(layer, inkex.addNS('g','svg'), {"gcodetools":"Gcodetools orientation group"})
+        orientation_group = etree.SubElement(layer, inkex.addNS('g','svg'), {"gcodetools":"Gcodetools orientation group"})
 
         # translate == ['0', '-917.7043']
         if layer.get("transform") != None :
@@ -3153,14 +3194,14 @@ class plotter_gcode(inkex.Effect):
             # si have correct coordinates
             # if layer have any tranform it will be in translate so lets add that
             si = [i[0]*orientation_scale, (i[1]*orientation_scale)+float(translate[1])]
-            g = inkex.etree.SubElement(orientation_group, inkex.addNS('g','svg'), {'gcodetools': "Gcodetools orientation point (2 points)"})
-            inkex.etree.SubElement(    g, inkex.addNS('path','svg'),
+            g = etree.SubElement(orientation_group, inkex.addNS('g','svg'), {'gcodetools': "Gcodetools orientation point (2 points)"})
+            etree.SubElement(    g, inkex.addNS('path','svg'),
                 {
                     'style':    "stroke:none;fill:#000000;",
                     'd':'m %s,%s 2.9375,-6.343750000001 0.8125,1.90625 6.843748640396,-6.84374864039 0,0 0.6875,0.6875 -6.84375,6.84375 1.90625,0.812500000001 z z' % (si[0], -si[1]+doc_height),
                     'gcodetools': "Gcodetools orientation point arrow"
                 })
-            t = inkex.etree.SubElement(    g, inkex.addNS('text','svg'),
+            t = etree.SubElement(    g, inkex.addNS('text','svg'),
                 {
                     'style':    "font-size:10px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;fill:#000000;fill-opacity:1;stroke:none;",
                     inkex.addNS("space","xml"):"preserve",
